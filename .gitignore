@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+*.egg-info/
+dist/
+build/
+.env
+*.log
+.DS_Store
+
+# Generated models and temporary files
+generated_models/
+temp_images/
+*.glb
+*.gltf
+*.obj
+
