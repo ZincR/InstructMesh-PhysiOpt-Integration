@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InstructMesh PhysiOpt Integration</title>
+    <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>InstructMesh PhysiOpt Integration</h1>
+            <p>Generate 3D models from text descriptions or images using Microsoft TRELLIS</p>
+        </header>
+
+        <main>
+            <!-- Input Section -->
+            <section class="input-section">
+                <div class="input-group">
+                    <label for="text-input">Input</label>
+                    <textarea 
+                        id="text-input" 
+                        placeholder="Enter a description of the 3D model you want to generate (e.g., 'a modern chair', 'a wooden table', 'a red sports car')"
+                        rows="3"
+                    ></textarea>
+                </div>
+
+                <div class="input-group">
+                    <label for="image-upload">Image</label>
+                    <div class="file-upload-wrapper">
+                        <input type="file" id="image-upload" accept="image/*">
+                        <label for="image-upload" class="file-upload-label">
+                            <span id="file-name">Choose an image file...</span>
+                            <span class="upload-btn">Browse</span>
+                        </label>
+                    </div>
+                </div>
+
+                <button id="generate-btn" class="generate-btn" disabled>Generate</button>
+            </section>
+
+            <!-- Loading Indicator -->
+            <section id="loading-section" class="loading-section hidden">
+                <div class="spinner"></div>
+                <p>Generating 3D model... This may take a few minutes.</p>
+            </section>
+
+            <!-- Error Section -->
+            <section id="error-section" class="error-section hidden">
+                <div class="error-message">
+                    <h3>Error</h3>
+                    <p id="error-text"></p>
+                    <button id="close-error-btn">Close</button>
+                </div>
+            </section>
+
+            <!-- 3D Viewer Section -->
+            <section id="viewer-section" class="viewer-section hidden">
+                <h2>Generated 3D Model</h2>
+                <div id="three-viewer" class="three-viewer"></div>
+                <div class="viewer-controls">
+                    <button id="reset-view-btn">Reset View</button>
+                    <button id="optimize-btn">Optimize with Physics</button>
+                    <button id="download-btn">Download Model</button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <!-- THREE.js Core Library and Addons -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/OBJLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js"></script>
+    <!-- Application Scripts -->
+    <script type="module" src="js/config.js"></script>
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,17 @@
+# Additional requirements for InstructMesh-PhysiOpt-Integration
+# These should be installed in the trellis conda environment
+# Most packages are already available in the trellis environment
+
+# Web Framework (install if not already in trellis environment)
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+
+# Image Processing (should already be in trellis environment)
+pillow
+imageio
+imageio-ffmpeg
+
+# 3D Processing (should already be in trellis environment)  
+trimesh
