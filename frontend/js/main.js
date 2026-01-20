@@ -1,15 +1,27 @@
-// InstructMesh-PhysiOpt-Integration - Main Application Logic
+/**
+ * Main Application - InstructMesh-PhysiOpt-Integration
+ * Orchestrates all modules and handles event coordination
+ */
+
 import config from './config.js';
+import { Viewer } from './viewer.js';
+import { OptimizedViewer } from './optimized-viewer.js';
+import { ModelLoader } from './model-loader.js';
+import { API } from './api.js';
+import { UI } from './ui.js';
+import { Segmentation } from './segmentation.js';
 
 class InstructMeshApp {
     constructor() {
-        this.scene = null;
-        this.camera = null;
-        this.renderer = null;
-        this.controls = null;
-        this.currentModel = null;
+        // State
         this.currentModelUrl = null;
+        this.optimizedModelUrl = null;
         this.currentGenerationId = null;
+        
+        // Modules
+        this.viewer = new Viewer('three-viewer');
+        this.optimizedViewer = new OptimizedViewer('three-viewer-optimized');
+        this.segmentation = new Segmentation(this.viewer, UI);
         
         this.init();
     }
@@ -20,11 +32,18 @@ class InstructMeshApp {
         // Setup event listeners
         this.setupEventListeners();
         
-        // Initialize Three.js viewer
-        this.initThreeViewer();
+        // Initialize Three.js viewers
+        this.viewer.init();
+        this.optimizedViewer.init();
+        
+        // Setup segmentation handlers
+        this.segmentation.setupHandlers();
         
         // Check backend connection
         this.checkBackend();
+        
+        // Start animation loop
+        this.animate();
         
         console.log('[APP] Application initialized');
     }
@@ -32,19 +51,14 @@ class InstructMeshApp {
     setupEventListeners() {
         // Text input
         const textInput = document.getElementById('text-input');
-        textInput.addEventListener('input', () => this.updateGenerateButton());
+        textInput.addEventListener('input', () => UI.updateGenerateButton());
         
         // Image upload
         const imageUpload = document.getElementById('image-upload');
         imageUpload.addEventListener('change', (e) => {
             const file = e.target.files[0];
-            if (file) {
-                document.getElementById('file-name').textContent = file.name;
-                this.updateGenerateButton();
-            } else {
-                document.getElementById('file-name').textContent = 'Choose an image file...';
-                this.updateGenerateButton();
-            }
+            UI.updateFileName(file ? file.name : null);
+            UI.updateGenerateButton();
         });
         
         // Generate button
@@ -52,9 +66,13 @@ class InstructMeshApp {
             this.handleGenerate();
         });
         
-        // Reset view button
+        // Reset view buttons
         document.getElementById('reset-view-btn').addEventListener('click', () => {
-            this.resetCamera();
+            this.viewer.resetCamera();
+        });
+        
+        document.getElementById('reset-view-optimized-btn').addEventListener('click', () => {
+            this.optimizedViewer.resetCamera();
         });
         
         // Optimize button
@@ -62,123 +80,47 @@ class InstructMeshApp {
             this.handleOptimize();
         });
         
-        // Download button
+        // Download buttons
         document.getElementById('download-btn').addEventListener('click', () => {
             this.downloadModel();
         });
         
+        document.getElementById('download-optimized-btn').addEventListener('click', () => {
+            this.downloadOptimizedModel();
+        });
+        
+        // Segmentation buttons
+        const segmentBtn = document.getElementById('segment-3d-btn');
+        if (segmentBtn) {
+            segmentBtn.addEventListener('click', async () => {
+                await this.enableSegmentation();
+            });
+        }
+        
+        const clearSegBtn = document.getElementById('clear-segmentation-btn');
+        if (clearSegBtn) {
+            clearSegBtn.addEventListener('click', async () => {
+                await this.clearSegmentation();
+            });
+        }
+        
         // Close error button
         document.getElementById('close-error-btn').addEventListener('click', () => {
-            this.hideError();
+            UI.hideError();
         });
-    }
-
-    updateGenerateButton() {
-        const textInput = document.getElementById('text-input');
-        const imageUpload = document.getElementById('image-upload');
-        const generateBtn = document.getElementById('generate-btn');
-        
-        const hasText = textInput.value.trim().length > 0;
-        const hasImage = imageUpload.files.length > 0;
-        
-        generateBtn.disabled = !(hasText || hasImage);
     }
 
     async checkBackend() {
-        try {
-            const response = await fetch(`${config.backendUrl}${config.endpoints.health}`);
-            const data = await response.json();
-            console.log('[APP] Backend connection:', data.status);
-        } catch (error) {
-            console.error('[APP] Backend connection failed:', error);
-            this.showError('Cannot connect to backend. Make sure the backend server is running on port 8000.');
+        const result = await API.checkBackend();
+        if (!result.success) {
+            UI.showError('Cannot connect to backend. Make sure the backend server is running on port 8000.');
         }
-    }
-
-    initThreeViewer() {
-        // Check if THREE.js is loaded
-        if (typeof THREE === 'undefined') {
-            console.error('[APP] THREE.js is not loaded. Please check the CDN link in index.html');
-            return;
-        }
-        
-        const viewerContainer = document.getElementById('three-viewer');
-        if (!viewerContainer) {
-            console.error('[APP] Viewer container not found!');
-            return;
-        }
-        
-        // Get dimensions - use offsetWidth/offsetHeight if clientWidth/Height are 0 (container hidden)
-        let width = viewerContainer.clientWidth || viewerContainer.offsetWidth || 800;
-        let height = viewerContainer.clientHeight || viewerContainer.offsetHeight || 600;
-        
-        // If still zero, use defaults
-        if (width === 0) width = 800;
-        if (height === 0) height = 600;
-        
-        // Scene
-        this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0xf0f0f0);
-        
-        // Camera
-        this.camera = new THREE.PerspectiveCamera(
-            75,
-            width / height,
-            0.1,
-            1000
-        );
-        this.camera.position.set(0, 0, 5);
-        
-        // Renderer
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
-        this.renderer.setSize(width, height);
-        this.renderer.shadowMap.enabled = true;
-        viewerContainer.appendChild(this.renderer.domElement);
-        
-        // Controls
-        this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
-        this.controls.enableDamping = true;
-        this.controls.dampingFactor = 0.05;
-        
-        // Lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-        this.scene.add(ambientLight);
-        
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        directionalLight.position.set(5, 5, 5);
-        directionalLight.castShadow = true;
-        this.scene.add(directionalLight);
-        
-        // Grid helper
-        const gridHelper = new THREE.GridHelper(10, 10);
-        this.scene.add(gridHelper);
-        
-        // Axis helper
-        const axesHelper = new THREE.AxesHelper(2);
-        this.scene.add(axesHelper);
-        
-        // Handle window resize
-        window.addEventListener('resize', () => {
-            const newWidth = viewerContainer.clientWidth || viewerContainer.offsetWidth || 800;
-            const newHeight = viewerContainer.clientHeight || viewerContainer.offsetHeight || 600;
-            
-            if (newWidth > 0 && newHeight > 0) {
-                this.camera.aspect = newWidth / newHeight;
-                this.camera.updateProjectionMatrix();
-                this.renderer.setSize(newWidth, newHeight);
-            }
-        });
-        
-        console.log('[APP] THREE.js viewer initialized with dimensions:', width, height);
-        
-        // Animation loop
-        this.animate();
     }
 
     animate() {
         requestAnimationFrame(() => this.animate());
-        this.controls.update();
-        this.renderer.render(this.scene, this.camera);
+        this.viewer.render();
+        this.optimizedViewer.render();
     }
 
     async handleGenerate() {
@@ -189,24 +131,23 @@ class InstructMeshApp {
         const imageFile = imageUpload.files[0];
         
         if (!text && !imageFile) {
-            this.showError('Please provide either a text description or an image.');
+            UI.showError('Please provide either a text description or an image.');
             return;
         }
         
         // Hide previous results and show loading
-        this.hideError();
-        this.hideViewer();
-        this.showLoading();
+        UI.hideError();
+        UI.hideViewer();
+        UI.hideOptimizedViewer();
+        UI.showLoading();
         
         try {
             let result;
             
             if (imageFile) {
-                // Generate from image
-                result = await this.generateFromImage(imageFile);
+                result = await API.generateFromImage(imageFile);
             } else {
-                // Generate from text
-                result = await this.generateFromText(text);
+                result = await API.generateFromText(text);
             }
             
             if (result.success) {
@@ -216,175 +157,106 @@ class InstructMeshApp {
                 // Load and display the 3D model
                 await this.loadModel(result.model_url);
                 this.currentModelUrl = result.model_url;
-                this.showViewer();
+                
+                // Reset optimized viewer state
+                this.optimizedViewer.removeCurrentModel();
+                this.optimizedModelUrl = null;
+                
+                UI.showViewer();
+                UI.showSegmentationButton();
+                UI.showSegmentationInfo();
             } else {
                 throw new Error(result.error || 'Generation failed');
             }
         } catch (error) {
             console.error('[APP] Generation error:', error);
-            this.showError(error.message || 'Failed to generate 3D model. Please try again.');
+            UI.showError(error.message || 'Failed to generate 3D model. Please try again.');
         } finally {
-            this.hideLoading();
+            UI.hideLoading();
         }
-    }
-
-    async generateFromText(text) {
-        const response = await fetch(`${config.backendUrl}${config.endpoints.generateFromText}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                text: text,
-                seed: 1
-            })
-        });
-        
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Generation failed');
-        }
-        
-        return await response.json();
-    }
-
-    async generateFromImage(imageFile) {
-        const formData = new FormData();
-        formData.append('image', imageFile);
-        formData.append('seed', '1');
-        
-        const response = await fetch(`${config.backendUrl}${config.endpoints.generateFromImage}`, {
-            method: 'POST',
-            body: formData
-        });
-        
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Generation failed');
-        }
-        
-        return await response.json();
     }
 
     async loadModel(modelUrl) {
-        // Remove previous model
-        if (this.currentModel) {
-            this.scene.remove(this.currentModel);
-            this.currentModel = null;
+        try {
+            const model = await ModelLoader.loadModel(modelUrl, config.backendUrl);
+            
+            // Load model into viewer and store textures/colors for segmentation
+            this.viewer.addModel(model);
+            this.viewer.fitModelToCamera();
+            
+            // Pass original textures and colors to segmentation
+            this.segmentation.setOriginalTextures(this.viewer.originalTextures);
+            this.segmentation.setOriginalMeshColors(this.viewer.originalMeshColors);
+            
+            // Resize viewer
+            this.viewer.resize();
+        } catch (error) {
+            console.error('[APP] Error loading model:', error);
+            throw error;
+        }
+    }
+
+    async handleOptimize() {
+        if (!this.currentGenerationId) {
+            UI.showError('No model available to optimize. Please generate a model first.');
+            return;
         }
         
-        const fullUrl = `${config.backendUrl}${modelUrl}`;
-        console.log('[APP] Loading model from:', fullUrl);
+        console.log(`[OPTIMIZE] Starting optimization for generation: ${this.currentGenerationId}`);
         
-        // Check file extension
-        const extension = modelUrl.split('.').pop().toLowerCase();
+        // Show loading
+        UI.hideError();
+        UI.showLoading();
         
-        if (extension === 'glb' || extension === 'gltf') {
-            await this.loadGLB(fullUrl);
-        } else if (extension === 'obj') {
-            await this.loadOBJ(fullUrl);
-        } else {
-            throw new Error(`Unsupported file format: ${extension}`);
+        // Disable optimize button during optimization
+        const optimizeBtn = document.getElementById('optimize-btn');
+        const originalText = optimizeBtn.textContent;
+        optimizeBtn.disabled = true;
+        optimizeBtn.textContent = 'Optimizing...';
+        
+        try {
+            const result = await API.optimizeModel(this.currentGenerationId);
+            
+            if (result.success) {
+                console.log('[OPTIMIZE] Optimization completed successfully');
+                
+                // Load optimized model into optimized viewer
+                await this.loadOptimizedModel(result.optimized_model_url);
+                this.optimizedModelUrl = result.optimized_model_url;
+                
+                // Show optimized viewer section
+                UI.showOptimizedViewer();
+                
+                console.log('[OPTIMIZE] Optimized model loaded and displayed in separate viewer');
+            } else {
+                throw new Error(result.error || 'Optimization failed');
+            }
+        } catch (error) {
+            console.error('[OPTIMIZE] Error:', error);
+            UI.showError(`Optimization failed: ${error.message}`);
+        } finally {
+            UI.hideLoading();
+            // Re-enable optimize button
+            optimizeBtn.disabled = false;
+            optimizeBtn.textContent = originalText;
         }
-        
-        // Fit model to camera
-        this.fitModelToCamera();
     }
 
-    async loadGLB(url) {
-        return new Promise((resolve, reject) => {
-            const loader = new THREE.GLTFLoader();
-            loader.load(
-                url,
-                (gltf) => {
-                    const model = gltf.scene;
-                    this.currentModel = model;
-                    this.scene.add(model);
-                    
-                    // Enable shadows
-                    model.traverse((child) => {
-                        if (child.isMesh) {
-                            child.castShadow = true;
-                            child.receiveShadow = true;
-                        }
-                    });
-                    
-                    console.log('[APP] GLB model loaded successfully');
-                    resolve();
-                },
-                undefined,
-                (error) => {
-                    console.error('[APP] Error loading GLB:', error);
-                    reject(new Error('Failed to load GLB model'));
-                }
-            );
-        });
-    }
-
-    async loadOBJ(url) {
-        return new Promise((resolve, reject) => {
-            const loader = new THREE.OBJLoader();
-            loader.load(
-                url,
-                (object) => {
-                    this.currentModel = object;
-                    this.scene.add(object);
-                    
-                    // Enable shadows
-                    object.traverse((child) => {
-                        if (child.isMesh) {
-                            child.castShadow = true;
-                            child.receiveShadow = true;
-                            // Add basic material if none exists
-                            if (!child.material) {
-                                child.material = new THREE.MeshStandardMaterial({ color: 0xcccccc });
-                            }
-                        }
-                    });
-                    
-                    console.log('[APP] OBJ model loaded successfully');
-                    resolve();
-                },
-                undefined,
-                (error) => {
-                    console.error('[APP] Error loading OBJ:', error);
-                    reject(new Error('Failed to load OBJ model'));
-                }
-            );
-        });
-    }
-
-    fitModelToCamera() {
-        if (!this.currentModel) return;
-        
-        const box = new THREE.Box3().setFromObject(this.currentModel);
-        const center = box.getCenter(new THREE.Vector3());
-        const size = box.getSize(new THREE.Vector3());
-        
-        // Calculate distance to fit model
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const distance = maxDim * 2;
-        
-        // Position camera
-        this.camera.position.set(
-            center.x + distance * 0.7,
-            center.y + distance * 0.7,
-            center.z + distance * 0.7
-        );
-        
-        // Look at center
-        this.camera.lookAt(center);
-        this.controls.target.copy(center);
-        this.controls.update();
-    }
-
-    resetCamera() {
-        this.fitModelToCamera();
+    async loadOptimizedModel(modelUrl) {
+        try {
+            const model = await ModelLoader.loadModel(modelUrl, config.backendUrl);
+            this.optimizedViewer.addModel(model);
+            this.optimizedViewer.fitModelToCamera();
+            this.optimizedViewer.resize();
+        } catch (error) {
+            console.error('[APP] Error loading optimized model:', error);
+            throw error;
+        }
     }
 
     downloadModel() {
         if (!this.currentModelUrl) {
-            this.showError('No model available to download.');
+            UI.showError('No model available to download.');
             return;
         }
         
@@ -397,101 +269,49 @@ class InstructMeshApp {
         document.body.removeChild(link);
     }
 
-    async handleOptimize() {
-        if (!this.currentGenerationId) {
-            this.showError('No model available to optimize. Please generate a model first.');
+    downloadOptimizedModel() {
+        if (!this.optimizedModelUrl) {
+            UI.showError('No optimized model available to download.');
             return;
         }
         
-        console.log(`[OPTIMIZE] Starting optimization for generation: ${this.currentGenerationId}`);
-        
-        // Show loading
-        this.hideError();
-        this.showLoading();
-        
-        // Disable optimize button during optimization
-        const optimizeBtn = document.getElementById('optimize-btn');
-        const originalText = optimizeBtn.textContent;
-        optimizeBtn.disabled = true;
-        optimizeBtn.textContent = 'Optimizing...';
+        const fullUrl = `${config.backendUrl}${this.optimizedModelUrl}`;
+        const link = document.createElement('a');
+        link.href = fullUrl;
+        link.download = this.optimizedModelUrl.split('/').pop();
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    async enableSegmentation() {
+        if (!this.currentGenerationId) {
+            UI.showError('Please generate a model first before segmenting.');
+            return;
+        }
         
         try {
-            const response = await fetch(`${config.backendUrl}${config.endpoints.optimize}/${this.currentGenerationId}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
-            });
+            const response = await API.load3DModel(this.currentGenerationId);
             
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.detail || 'Optimization failed');
+            if (!response.success) {
+                throw new Error(response.error || 'Failed to load model for segmentation');
             }
             
-            const result = await response.json();
-            
-            if (result.success) {
-                console.log('[OPTIMIZE] Optimization completed successfully');
-                console.log('[OPTIMIZE] Optimized model URL:', result.optimized_model_url);
-                
-                // Load and display the optimized model
-                await this.loadModel(result.optimized_model_url);
-                this.currentModelUrl = result.optimized_model_url;
-                console.log('[OPTIMIZE] Optimized model loaded and displayed');
-                this.hideLoading();
-                this.showViewer();
-            } else {
-                throw new Error(result.error || 'Optimization failed');
-            }
+            console.log('[Segmentation] Model loaded for segmentation:', response);
+            await this.segmentation.enable();
         } catch (error) {
-            console.error('[OPTIMIZE] Error:', error);
-            this.hideLoading();
-            this.showError(`Optimization failed: ${error.message}`);
-        } finally {
-            // Re-enable optimize button
-            optimizeBtn.disabled = false;
-            optimizeBtn.textContent = originalText;
+            console.error('[Segmentation] Error enabling segmentation:', error);
+            UI.showError(`Failed to enable segmentation: ${error.message}`);
         }
     }
 
-    showLoading() {
-        document.getElementById('loading-section').classList.remove('hidden');
-    }
-
-    hideLoading() {
-        document.getElementById('loading-section').classList.add('hidden');
-    }
-
-    showError(message) {
-        document.getElementById('error-text').textContent = message;
-        document.getElementById('error-section').classList.remove('hidden');
-    }
-
-    hideError() {
-        document.getElementById('error-section').classList.add('hidden');
-    }
-
-    showViewer() {
-        document.getElementById('viewer-section').classList.remove('hidden');
-        
-        // Resize renderer after showing (container might have been hidden during init)
-        if (this.renderer && this.camera) {
-            const viewerContainer = document.getElementById('three-viewer');
-            if (viewerContainer) {
-                const width = viewerContainer.clientWidth || viewerContainer.offsetWidth || 800;
-                const height = viewerContainer.clientHeight || viewerContainer.offsetHeight || 600;
-                
-                if (width > 0 && height > 0) {
-                    this.camera.aspect = width / height;
-                    this.camera.updateProjectionMatrix();
-                    this.renderer.setSize(width, height);
-                }
-            }
+    async clearSegmentation() {
+        try {
+            await this.segmentation.clear();
+        } catch (error) {
+            console.error('[Segmentation] Error clearing segmentation:', error);
+            UI.showError(`Failed to clear segmentation: ${error.message}`);
         }
-    }
-
-    hideViewer() {
-        document.getElementById('viewer-section').classList.add('hidden');
     }
 }
 
@@ -503,4 +323,3 @@ if (document.readyState === 'loading') {
 } else {
     new InstructMeshApp();
 }
-

@@ -10,7 +10,16 @@ const config = {
         generateFromText: '/generate_from_text',
         generateFromImage: '/generate_from_image',
         optimize: '/optimize',
-        files: '/files'
+        files: '/files',
+        load3DModel: '/load_3d_model',
+        segment3DModel: '/segment_3d_model',
+        clear3DPrompts: '/clear_3d_prompts',
+        getPointcloud: '/get_pointcloud'
+    },
+    
+    // Helper method to get full API URL
+    getApiUrl(endpoint) {
+        return `${this.backendUrl}${endpoint}`;
     }
 };
 

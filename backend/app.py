@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, File, UploadFile, Form
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Body
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -27,6 +27,15 @@ os.environ["SPCONV_ALGO"] = "native"
 # Import our generation and optimization modules
 from generate import generate_3d_from_image, generate_3d_from_text
 from optimize import optimize_model
+
+# Import segmentation module
+from segment import (
+    POINT_SAM_AVAILABLE,
+    load_model_for_segmentation,
+    clear_prompts,
+    get_pointcloud_data,
+    segment_with_click
+)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -77,8 +86,6 @@ def get_relative_url(file_path: Optional[str]) -> Optional[str]:
         try:
             relative_path = path.relative_to(FILES_DIR)
         except ValueError:
-            # If path is not relative to FILES_DIR, try to extract folder and filename
-            # Assumes path structure: .../results/models/{folder}/{filename}
             parts = path.parts
             if "models" in parts:
                 models_idx = parts.index("models")
@@ -96,7 +103,6 @@ def get_relative_url(file_path: Optional[str]) -> Optional[str]:
         return url_path
         
     except Exception as e:
-        print(f"[WARNING] Error converting path to URL: {file_path}, error: {e}")
         return None
 
 # ============================================================================
@@ -149,8 +155,6 @@ async def generate_from_text(request: TextRequest):
     if not text:
         raise HTTPException(status_code=400, detail="Text description cannot be empty")
     
-    print(f"[GENERATE] Generating 3D model from text: '{text}'")
-    
     try:
         # Create unique folder for this generation
         generation_id = str(uuid.uuid4())
@@ -188,13 +192,11 @@ async def generate_from_text(request: TextRequest):
             }
         }
         
-        print(f"[GENERATE] Successfully generated model: {response_data['model_url']}")
         return JSONResponse(content=response_data)
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Unexpected error in text generation: {e}")
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
 @app.post("/generate_from_image")
@@ -206,8 +208,6 @@ async def generate_from_image(
     
     if not image.content_type or not image.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
-    
-    print(f"[GENERATE] Generating 3D model from image: {image.filename}")
     
     try:
         # Create unique folder for this generation
@@ -258,20 +258,16 @@ async def generate_from_image(
             }
         }
         
-        print(f"[GENERATE] Successfully generated model: {response_data['model_url']}")
         return JSONResponse(content=response_data)
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Unexpected error in image generation: {e}")
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
 @app.post("/optimize/{generation_id}")
 async def optimize_3d_model(generation_id: str):
     """Optimize a generated 3D model using physics simulation"""
-    
-    print(f"[OPTIMIZE] Optimizing model for generation_id: {generation_id}")
     
     try:
         # Get the folder path for this generation
@@ -310,15 +306,11 @@ async def optimize_3d_model(generation_id: str):
             "message": results.get("message", "Optimization completed successfully")
         }
         
-        print(f"[OPTIMIZE] Optimization completed successfully: {response_data['optimized_model_url']}")
         return JSONResponse(content=response_data)
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Unexpected error in optimization: {e}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Optimization failed: {str(e)}")
 
 @app.get("/files/{folder}/{filename}")
@@ -330,6 +322,96 @@ async def serve_file(folder: str, filename: str):
         raise HTTPException(status_code=404, detail="File not found")
     
     return FileResponse(file_path)
+
+# ============================================================================
+# 3D Segmentation Endpoints
+# ============================================================================
+
+class Load3DModelRequest(BaseModel):
+    model_id: str
+
+@app.post("/load_3d_model")
+async def load_3d_model_endpoint(request: Load3DModelRequest):
+    """Load a 3D model and prepare it for Point-SAM segmentation"""
+    if not POINT_SAM_AVAILABLE:
+        return JSONResponse(
+            content={"success": False, "error": "Point-SAM not available"}, 
+            status_code=503
+        )
+    
+    try:
+        model_id = request.model_id
+        model_dir = FILES_DIR / model_id
+        if not model_dir.exists():
+            return JSONResponse(
+                content={"success": False, "error": f"Model {model_id} not found"}, 
+                status_code=200
+            )
+        
+        model_data, error = load_model_for_segmentation(model_id, FILES_DIR)
+        if error:
+            return JSONResponse(
+                content={"success": False, "error": error}, 
+                status_code=200
+            )
+        
+        return JSONResponse(content={
+            "success": True, 
+            "model_id": model_id,
+            "num_points": int(model_data['pc_xyz'].shape[1]),
+            "glb_path": model_data['glb_path']
+        })
+        
+    except Exception as e:
+        return JSONResponse(
+            content={"success": False, "error": str(e)},
+            status_code=500
+        )
+
+@app.post("/clear_3d_prompts")
+async def clear_3d_prompts():
+    """Clear accumulated prompts for 3D segmentation"""
+    from segment import current_ply_data
+    
+    if current_ply_data is None:
+        return JSONResponse(
+            content={"success": False, "error": "No 3D model loaded"}, 
+            status_code=400
+        )
+    
+    clear_prompts()
+    return JSONResponse(content={"success": True, "message": "Prompts cleared"})
+
+@app.get("/get_pointcloud")
+async def get_pointcloud():
+    """Get the currently loaded point cloud data for Three.js visualization"""
+    data, error = get_pointcloud_data()
+    if error:
+        return JSONResponse(
+            content={"success": False, "error": error}, 
+            status_code=400
+        )
+    
+    return JSONResponse(content={"success": True, **data})
+
+@app.post("/segment_3d_model")
+async def segment_3d_model_endpoint(click_point: dict = Body(...)):
+    """Segment a 3D model using Point-SAM with click point (positive/negative prompt)"""
+    if not POINT_SAM_AVAILABLE:
+        return JSONResponse(
+            content={"success": False, "error": "Point-SAM not available"}, 
+            status_code=503
+        )
+    
+    result, error = segment_with_click(click_point)
+    if error:
+        status_code = 400 if "too small" in error else 500
+        return JSONResponse(
+            content={"success": False, "error": error}, 
+            status_code=status_code
+        )
+    
+    return JSONResponse(content={"success": True, **result})
 
 # ============================================================================
 # Startup Message

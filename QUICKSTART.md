@@ -29,13 +29,9 @@ Wait for: "Backend will be available at: http://localhost:8000"
 ### Step 4: Start Frontend (Terminal 2)
 
 ```bash
-cd /home/farazfaruqi/InstructMesh-PhysiOpt-Integration/backend
-./start_backend.sh
+cd /home/farazfaruqi/InstructMesh-PhysiOpt-Integration/frontend
+./start_frontend.sh
 ```
-
-The script will automatically activate the trellis environment.
-
-Wait for: "Backend will be available at: http://localhost:8000"
 
 ## Using the Application
 

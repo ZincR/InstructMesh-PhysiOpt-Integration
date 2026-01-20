@@ -56,12 +56,38 @@
 
             <!-- 3D Viewer Section -->
             <section id="viewer-section" class="viewer-section hidden">
-                <h2>Generated 3D Model</h2>
-                <div id="three-viewer" class="three-viewer"></div>
-                <div class="viewer-controls">
-                    <button id="reset-view-btn">Reset View</button>
-                    <button id="optimize-btn">Optimize with Physics</button>
-                    <button id="download-btn">Download Model</button>
+                <div class="viewers-container">
+                    <!-- Original Model Viewer -->
+                    <div class="model-viewer-wrapper">
+                        <h2>Original 3D Model</h2>
+                        <div id="three-viewer" class="three-viewer"></div>
+                        <div class="viewer-controls">
+                            <button id="reset-view-btn">Reset View</button>
+                            <button id="optimize-btn">Optimize with Physics</button>
+                            <button id="download-btn">Download Original</button>
+                            <button id="segment-3d-btn" style="display: none;">Segment 3D Model</button>
+                            <button id="clear-segmentation-btn" style="display: none;">Clear Segmentation</button>
+                        </div>
+                        <div id="segmentation-info" style="margin-top: 10px; padding: 10px; background: #f5f5f5; border-radius: 4px; display: none;">
+                            <p style="margin: 0; font-size: 0.9rem; color: #666;">
+                                <strong>Segmentation Mode:</strong> 
+                                <span id="segmentation-instructions">Click "Segment 3D Model" to enable interactive segmentation</span>
+                            </p>
+                            <p style="margin: 5px 0 0 0; font-size: 0.85rem; color: #888;">
+                                Left-click: positive prompt (include) | Right-click: negative prompt (exclude)
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Optimized Model Viewer -->
+                    <div id="optimized-viewer-wrapper" class="model-viewer-wrapper hidden">
+                        <h2>Optimized 3D Model <span class="badge">Physics Optimized</span></h2>
+                        <div id="three-viewer-optimized" class="three-viewer"></div>
+                        <div class="viewer-controls">
+                            <button id="reset-view-optimized-btn">Reset View</button>
+                            <button id="download-optimized-btn">Download Optimized</button>
+                        </div>
+                    </div>
                 </div>
             </section>
         </main>
