@@ -33,6 +33,18 @@ echo "API documentation at: http://localhost:$PORT/docs"
 echo "Press Ctrl+C to stop the server"
 echo ""
 
+# Create logs directory if it doesn't exist
+mkdir -p logs
+
+# One session ID per backend run — uvicorn reload workers inherit this and append to the same log
+export BACKEND_SESSION_ID="${BACKEND_SESSION_ID:-$(date +%Y%m%d_%H%M%S)}"
+
+# Synchronous CUDA errors: next run will show the real line that triggered the assert.
+# Remove or comment out after debugging if you want better GPU performance.
+export CUDA_LAUNCH_BLOCKING=1
+
 # Start the server
+# Note: Logging is handled by Python logger module, so output goes to both
+# terminal and log file automatically
 python3 app.py
 

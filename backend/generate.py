@@ -237,67 +237,6 @@ def sample(out_folder, text=None, image=None, seed=1, mesh=True, rf=False, no_sl
             "has_image": image is not None
         }
 
-def generate_3d_from_text(
-    text_prompt: str,
-    output_folder: str,
-    seed: int = 1,
-    num_samples: int = 1,
-    save_video: bool = False
-) -> Dict[str, Any]:
-    """
-    Generate 3D models from text using TRELLIS
-    Saves all relevant data for downstream tasks including PLY, OBJ, GLB, and SLAT files.
-    
-    Args:
-        text_prompt: Text description for 3D generation
-        output_folder: Directory to save outputs
-        seed: Random seed for generation
-        num_samples: Number of samples to generate
-        save_video: Whether to save video renders
-    
-    Returns:
-        Dictionary containing generated file paths and metadata
-    """
-    print(f"[GENERATE] Starting text-to-3D generation for: '{text_prompt}'")
-    
-    try:
-        results = sample(
-            out_folder=output_folder,
-            text=text_prompt,
-            image=None,
-            seed=seed,
-            mesh=True,
-            rf=False,
-            no_slat=False,  # Always save SLAT for downstream tasks
-            save_video=save_video,
-            n_samples=num_samples
-        )
-        
-        # For compatibility with existing API, also return GLB path from first sample
-        if num_samples > 0 and "sample_00" in results["samples"]:
-            sample_00_files = results["samples"]["sample_00"]
-            results["glb_path"] = sample_00_files.get("mesh_glb")
-            results["obj_path"] = sample_00_files.get("mesh_obj")
-            results["ply_path"] = sample_00_files.get("gaussian_ply")
-            results["slat_path"] = sample_00_files.get("slat")
-            results["success"] = True
-        else:
-            results["success"] = False
-            results["error"] = "No samples generated"
-        
-        print(f"[GENERATE] Generation completed! Files saved in: {output_folder}")
-        return results
-        
-    except Exception as e:
-        print(f"[GENERATE] Error during generation: {e}")
-        import traceback
-        traceback.print_exc()
-        return {
-            "success": False,
-            "error": str(e),
-            "output_folder": output_folder
-        }
-
 def generate_3d_from_image(
     image_path: str,
     output_folder: str,

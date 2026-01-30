@@ -10,6 +10,7 @@ import sys
 import gc
 from pathlib import Path
 from typing import Dict, Any, Optional
+from plot_stresses import plot_hexahedral_mesh_surface_stylized
 
 # Add TRELLIS to the path
 sys.path.append("/home/farazfaruqi/trellis-physics")
@@ -191,6 +192,35 @@ def optimize_model(
         
         glb.export(str(glb_path))
         print(f"[OPTIMIZE] Optimized GLB saved to: {glb_path}")
+
+        #8. Plot stresses
+        initial_mises = optimizer.current_trajectory.states[0].mises
+        initial_nodes = optimizer.current_trajectory.states[0].nodes
+        initial_elements = optimizer.current_trajectory.states[0].elements
+
+        plot_hexahedral_mesh_surface_stylized(
+            initial_elements,
+            initial_nodes,
+            initial_mises,
+            folder_path,
+            optimized=False,
+            normalize=False
+        )
+
+        optimized_mises = optimizer.current_trajectory.states[-1].mises
+        optimized_nodes = optimizer.current_trajectory.states[-1].nodes
+        optimized_elements = optimizer.current_trajectory.states[-1].elements
+
+        plot_hexahedral_mesh_surface_stylized(
+            optimized_elements,
+            optimized_nodes,
+            optimized_mises,
+            folder_path,
+            optimized=True,
+            normalize=False
+        )
+        
+        print("[OPTIMIZE] Stresses plotted successfully")
         
         # Clean up optimizer and intermediate variables to free memory
         del optimizer
